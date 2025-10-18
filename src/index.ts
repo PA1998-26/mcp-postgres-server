@@ -21,6 +21,7 @@ interface DatabaseConfig {
   user: string;
   password: string;
   database: string;
+  ssl?: boolean | { rejectUnauthorized: boolean };
 }
 
 // Type guard for error objects
@@ -119,16 +120,33 @@ class PostgresServer {
   }
   
   private getEnvConfig(): DatabaseConfig | null {
-    const { PG_HOST, PG_USER, PG_PASSWORD, PG_DATABASE, PG_PORT } = process.env;
+    const { PG_HOST, PG_USER, PG_PASSWORD, PG_DATABASE, PG_PORT, PG_SSL } = process.env;
     
     if (PG_HOST && PG_USER && PG_PASSWORD && PG_DATABASE) {
-      return {
+      const config: DatabaseConfig = {
         host: PG_HOST,
         port: PG_PORT ? parseInt(PG_PORT, 10) : 5432,
         user: PG_USER,
         password: PG_PASSWORD,
         database: PG_DATABASE
       };
+      
+      // Handle SSL configuration
+      if (PG_SSL !== undefined) {
+        if (PG_SSL.toLowerCase() === 'true' || PG_SSL === '1') {
+          config.ssl = true;
+        } else if (PG_SSL.toLowerCase() === 'false' || PG_SSL === '0') {
+          config.ssl = false;
+        } else if (PG_SSL.toLowerCase() === 'reject-unauthorized-false') {
+          config.ssl = { rejectUnauthorized: false };
+        }
+      } else {
+        // Default SSL configuration for production environments
+        // This helps with common SSL certificate issues
+        config.ssl = { rejectUnauthorized: false };
+      }
+      
+      return config;
     }
     
     return null;
@@ -162,6 +180,10 @@ class PostgresServer {
               database: {
                 type: 'string',
                 description: 'Database name',
+              },
+              ssl: {
+                type: ['boolean', 'object'],
+                description: 'SSL configuration. Use false to disable SSL, true to enable with default settings, or { rejectUnauthorized: false } to disable certificate verification (recommended for cloud databases)',
               },
             },
             required: ['host', 'user', 'password', 'database'],
@@ -296,6 +318,8 @@ class PostgresServer {
       user: args.user,
       password: args.password,
       database: args.database,
+      // Add SSL configuration - default to rejectUnauthorized: false for common SSL issues
+      ssl: args.ssl !== undefined ? args.ssl : { rejectUnauthorized: false }
     };
 
     try {
