@@ -16,14 +16,12 @@ import { config } from 'dotenv';
 config();
 
 // Debug: Log all environment variables that start with PG_
-console.log('[MCP Debug] All PG_ environment variables:', 
+const pgEnvVars = Object.fromEntries(
   Object.keys(process.env)
-    .filter(key => key.startsWith('PG_'))
-    .reduce((obj, key) => {
-      obj[key] = process.env[key] ? '***' : 'undefined';
-      return obj;
-    }, {})
+    .filter((key) => key.startsWith('PG_'))
+    .map((key) => [key, process.env[key] ? '***' : 'undefined'])
 );
+console.log('[MCP Debug] All PG_ environment variables:', pgEnvVars);
 
 interface DatabaseConfig {
   host: string;
