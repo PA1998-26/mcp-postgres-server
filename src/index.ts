@@ -540,6 +540,12 @@ class PostgresServer {
     app.use(express.json());
   
     const port = parseInt(process.env.PORT || '3000', 10);
+    
+    // Add request logging middleware
+    app.use((req, res, next) => {
+      console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} - ${req.ip}`);
+      next();
+    });
   
     app.get('/', (_: unknown, res: any) => {
       res.send('PostgreSQL MCP server is running.');
@@ -577,9 +583,23 @@ class PostgresServer {
       }
     });
   
+    // Add catch-all route for debugging
+    app.all('*', (req, res) => {
+      console.log(`[DEBUG] Unhandled ${req.method} request to ${req.path}`);
+      res.status(404).json({ 
+        error: `Route not found: ${req.method} ${req.path}`,
+        availableRoutes: ['GET /', 'GET /health', 'POST /:tool']
+      });
+    });
+
     app.listen(port, '0.0.0.0', () => {
       console.log(`🚀 MCP Postgres server listening on port ${port}`);
       console.log(`[MCP] Server bound to 0.0.0.0:${port}`);
+      console.log(`[MCP] Environment: NODE_ENV=${process.env.NODE_ENV}`);
+      console.log(`[MCP] Available routes:`);
+      console.log(`[MCP]   GET  /`);
+      console.log(`[MCP]   GET  /health`);
+      console.log(`[MCP]   POST /:tool (connect_db, list_tables, list_schemas, describe_table, query, execute)`);
     });
   }
   
