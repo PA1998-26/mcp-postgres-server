@@ -120,7 +120,18 @@ class PostgresServer {
   }
   
   private getEnvConfig(): DatabaseConfig | null {
-    const { PG_HOST, PG_USER, PG_PASSWORD, PG_DATABASE, PG_PORT, PG_SSL } = process.env;
+    const { PG_HOST, PG_USER, PG_PASSWORD, PG_DATABASE, PG_PORT, PG_SSL, PGSSLMODE } = process.env;
+    
+    // Debug logging
+    console.log('[MCP Debug] Environment variables check:', {
+      PG_HOST: PG_HOST ? '***' : 'undefined',
+      PG_USER: PG_USER ? '***' : 'undefined', 
+      PG_PASSWORD: PG_PASSWORD ? '***' : 'undefined',
+      PG_DATABASE: PG_DATABASE ? '***' : 'undefined',
+      PG_PORT: PG_PORT || 'undefined',
+      PG_SSL: PG_SSL || 'undefined',
+      PGSSLMODE: PGSSLMODE || 'undefined'
+    });
     
     if (PG_HOST && PG_USER && PG_PASSWORD && PG_DATABASE) {
       const config: DatabaseConfig = {
@@ -131,7 +142,7 @@ class PostgresServer {
         database: PG_DATABASE
       };
       
-      // Handle SSL configuration
+      // Handle SSL configuration - support both PG_SSL and PGSSLMODE
       if (PG_SSL !== undefined) {
         if (PG_SSL.toLowerCase() === 'true' || PG_SSL === '1') {
           config.ssl = true;
@@ -140,15 +151,25 @@ class PostgresServer {
         } else if (PG_SSL.toLowerCase() === 'reject-unauthorized-false') {
           config.ssl = { rejectUnauthorized: false };
         }
+      } else if (PGSSLMODE !== undefined) {
+        // Handle PGSSLMODE values
+        if (PGSSLMODE.toLowerCase() === 'require' || PGSSLMODE.toLowerCase() === 'prefer') {
+          config.ssl = { rejectUnauthorized: false };
+        } else if (PGSSLMODE.toLowerCase() === 'disable') {
+          config.ssl = false;
+        } else {
+          config.ssl = { rejectUnauthorized: false };
+        }
       } else {
         // Default SSL configuration for production environments
-        // This helps with common SSL certificate issues
         config.ssl = { rejectUnauthorized: false };
       }
       
+      console.log('[MCP Debug] Environment config loaded successfully');
       return config;
     }
     
+    console.log('[MCP Debug] Missing required environment variables');
     return null;
   }
 
