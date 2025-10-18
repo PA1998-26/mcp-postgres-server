@@ -624,7 +624,10 @@ class PostgresServer {
                       user: { type: 'string', description: 'Database user' },
                       password: { type: 'string', description: 'Database password' },
                       database: { type: 'string', description: 'Database name' },
-                      ssl: { type: ['boolean', 'object'], description: 'SSL configuration' }
+                      ssl: { 
+                        type: ['boolean', 'object'], 
+                        description: 'SSL configuration. Use false to disable SSL, true to enable with default settings, or { rejectUnauthorized: false } to disable certificate verification (recommended for cloud databases)' 
+                      }
                     },
                     required: ['host', 'user', 'password', 'database']
                   }
@@ -635,8 +638,17 @@ class PostgresServer {
                   inputSchema: {
                     type: 'object',
                     properties: {
-                      sql: { type: 'string', description: 'SQL SELECT query' },
-                      params: { type: 'array', description: 'Query parameters' }
+                      sql: { 
+                        type: 'string', 
+                        description: 'SQL SELECT query (use $1, $2, etc. for parameters)' 
+                      },
+                      params: { 
+                        type: 'array',
+                        items: {
+                          type: ['string', 'number', 'boolean', 'null']
+                        },
+                        description: 'Query parameters (optional)' 
+                      }
                     },
                     required: ['sql']
                   }
@@ -647,8 +659,17 @@ class PostgresServer {
                   inputSchema: {
                     type: 'object',
                     properties: {
-                      sql: { type: 'string', description: 'SQL query' },
-                      params: { type: 'array', description: 'Query parameters' }
+                      sql: { 
+                        type: 'string', 
+                        description: 'SQL query (INSERT, UPDATE, DELETE) (use $1, $2, etc. for parameters)' 
+                      },
+                      params: { 
+                        type: 'array',
+                        items: {
+                          type: ['string', 'number', 'boolean', 'null']
+                        },
+                        description: 'Query parameters (optional)' 
+                      }
                     },
                     required: ['sql']
                   }
