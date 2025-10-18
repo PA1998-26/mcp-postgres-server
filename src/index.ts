@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import {
   CallToolRequestSchema,
   ErrorCode,
@@ -547,14 +547,155 @@ class PostgresServer {
       next();
     });
   
+    // Health check endpoint
     app.get('/', (_: unknown, res: any) => {
-      res.send('PostgreSQL MCP server is running.');
+      res.json({
+        name: 'postgres-server',
+        version: '1.0.0',
+        status: 'running',
+        capabilities: { tools: {} }
+      });
+    });
+
+    // MCP SSE endpoint for Agent Builder integration
+    app.get('/sse', async (req: any, res: any) => {
+      console.log('[MCP] SSE connection established');
+      
+      // Set SSE headers
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Cache-Control'
+      });
+
+      // Create SSE transport
+      const transport = new SSEServerTransport('/sse', res);
+      
+      // Connect the MCP server to the transport
+      await this.server.connect(transport);
+      
+      // Handle connection cleanup
+      req.on('close', () => {
+        console.log('[MCP] SSE connection closed');
+        transport.close();
+      });
+    });
+
+    // Handle MCP requests at root path (for Agent Builder)
+    app.post('/', async (req: any, res: any) => {
+      console.log(`[MCP] Received root POST request:`, req.body);
+      try {
+        const { method, params } = req.body;
+        
+        if (method === 'tools/call') {
+          const { name, arguments: args } = params;
+          console.log(`[MCP] Tool call: ${name}`);
+          
+          switch (name) {
+            case 'connect_db':
+              return res.json(await this.handleConnectDb(args));
+            case 'list_tables':
+              return res.json(await this.handleListTables(args));
+            case 'list_schemas':
+              return res.json(await this.handleListSchemas());
+            case 'describe_table':
+              return res.json(await this.handleDescribeTable(args));
+            case 'query':
+              return res.json(await this.handleQuery(args));
+            case 'execute':
+              return res.json(await this.handleExecute(args));
+            default:
+              return res.status(404).json({ error: `Unknown tool: ${name}` });
+          }
+        } else if (method === 'tools/list') {
+          return res.json({
+            tools: [
+              {
+                name: 'connect_db',
+                description: 'Connect to PostgreSQL database',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    host: { type: 'string', description: 'Database host' },
+                    port: { type: 'number', description: 'Database port (default: 5432)' },
+                    user: { type: 'string', description: 'Database user' },
+                    password: { type: 'string', description: 'Database password' },
+                    database: { type: 'string', description: 'Database name' },
+                    ssl: { type: ['boolean', 'object'], description: 'SSL configuration' }
+                  },
+                  required: ['host', 'user', 'password', 'database']
+                }
+              },
+              {
+                name: 'query',
+                description: 'Execute a SELECT query',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    sql: { type: 'string', description: 'SQL SELECT query' },
+                    params: { type: 'array', description: 'Query parameters' }
+                  },
+                  required: ['sql']
+                }
+              },
+              {
+                name: 'execute',
+                description: 'Execute an INSERT, UPDATE, or DELETE query',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    sql: { type: 'string', description: 'SQL query' },
+                    params: { type: 'array', description: 'Query parameters' }
+                  },
+                  required: ['sql']
+                }
+              },
+              {
+                name: 'list_schemas',
+                description: 'List all schemas in the database',
+                inputSchema: { type: 'object', properties: {}, required: [] }
+              },
+              {
+                name: 'list_tables',
+                description: 'List tables in the database',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    schema: { type: 'string', description: 'Schema name (default: public)' }
+                  },
+                  required: []
+                }
+              },
+              {
+                name: 'describe_table',
+                description: 'Get table structure',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    table: { type: 'string', description: 'Table name' },
+                    schema: { type: 'string', description: 'Schema name (default: public)' }
+                  },
+                  required: ['table']
+                }
+              }
+            ]
+          });
+        } else {
+          return res.status(400).json({ error: `Unknown method: ${method}` });
+        }
+      } catch (err: unknown) {
+        console.error(`[MCP] Error handling root POST:`, err);
+        const errorMessage = isErrorWithMessage(err) ? err.message : 'Unknown error';
+        res.status(500).json({ error: errorMessage });
+      }
     });
   
     // Optional health check
     app.get('/health', (_: unknown, res: any) => res.json({ status: 'ok' }));
   
-    // MCP endpoints
+    // MCP endpoints (legacy support)
     app.post('/:tool', async (req: any, res: any) => {
       const toolName = req.params.tool;
       console.log(`[MCP] Received request for tool: ${toolName}`);
@@ -588,7 +729,7 @@ class PostgresServer {
       console.log(`[DEBUG] Unhandled ${req.method} request to ${req.path}`);
       res.status(404).json({ 
         error: `Route not found: ${req.method} ${req.path}`,
-        availableRoutes: ['GET /', 'GET /health', 'POST /:tool']
+        availableRoutes: ['GET /', 'GET /health', 'GET /sse', 'POST /', 'POST /:tool']
       });
     });
 
@@ -597,9 +738,11 @@ class PostgresServer {
       console.log(`[MCP] Server bound to 0.0.0.0:${port}`);
       console.log(`[MCP] Environment: NODE_ENV=${process.env.NODE_ENV}`);
       console.log(`[MCP] Available routes:`);
-      console.log(`[MCP]   GET  /`);
-      console.log(`[MCP]   GET  /health`);
-      console.log(`[MCP]   POST /:tool (connect_db, list_tables, list_schemas, describe_table, query, execute)`);
+      console.log(`[MCP]   GET  / (server info)`);
+      console.log(`[MCP]   GET  /health (health check)`);
+      console.log(`[MCP]   GET  /sse (MCP SSE endpoint for Agent Builder)`);
+      console.log(`[MCP]   POST / (MCP protocol endpoint)`);
+      console.log(`[MCP]   POST /:tool (legacy tool endpoints)`);
     });
   }
   
