@@ -584,7 +584,7 @@ class PostgresServer {
     });
   
     // Add catch-all route for debugging
-    app.all('*', (req, res) => {
+    app.use((req, res) => {
       console.log(`[DEBUG] Unhandled ${req.method} request to ${req.path}`);
       res.status(404).json({ 
         error: `Route not found: ${req.method} ${req.path}`,
