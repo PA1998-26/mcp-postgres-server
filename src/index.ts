@@ -587,108 +587,164 @@ class PostgresServer {
     app.post('/', async (req: any, res: any) => {
       console.log(`[MCP] Received root POST request:`, req.body);
       try {
-        const { method, params } = req.body;
+        const { jsonrpc, method, id, params } = req.body;
         
-        if (method === 'tools/call') {
+        // Handle MCP protocol methods
+        if (method === 'initialize') {
+          console.log(`[MCP] Initialize request from client:`, params.clientInfo);
+          return res.json({
+            jsonrpc: '2.0',
+            id,
+            result: {
+              protocolVersion: '2025-03-26',
+              capabilities: {
+                tools: {}
+              },
+              serverInfo: {
+                name: 'postgres-server',
+                version: '1.0.0'
+              }
+            }
+          });
+        } else if (method === 'tools/list') {
+          console.log(`[MCP] Tools list request`);
+          return res.json({
+            jsonrpc: '2.0',
+            id,
+            result: {
+              tools: [
+                {
+                  name: 'connect_db',
+                  description: 'Connect to PostgreSQL database',
+                  inputSchema: {
+                    type: 'object',
+                    properties: {
+                      host: { type: 'string', description: 'Database host' },
+                      port: { type: 'number', description: 'Database port (default: 5432)' },
+                      user: { type: 'string', description: 'Database user' },
+                      password: { type: 'string', description: 'Database password' },
+                      database: { type: 'string', description: 'Database name' },
+                      ssl: { type: ['boolean', 'object'], description: 'SSL configuration' }
+                    },
+                    required: ['host', 'user', 'password', 'database']
+                  }
+                },
+                {
+                  name: 'query',
+                  description: 'Execute a SELECT query',
+                  inputSchema: {
+                    type: 'object',
+                    properties: {
+                      sql: { type: 'string', description: 'SQL SELECT query' },
+                      params: { type: 'array', description: 'Query parameters' }
+                    },
+                    required: ['sql']
+                  }
+                },
+                {
+                  name: 'execute',
+                  description: 'Execute an INSERT, UPDATE, or DELETE query',
+                  inputSchema: {
+                    type: 'object',
+                    properties: {
+                      sql: { type: 'string', description: 'SQL query' },
+                      params: { type: 'array', description: 'Query parameters' }
+                    },
+                    required: ['sql']
+                  }
+                },
+                {
+                  name: 'list_schemas',
+                  description: 'List all schemas in the database',
+                  inputSchema: { type: 'object', properties: {}, required: [] }
+                },
+                {
+                  name: 'list_tables',
+                  description: 'List tables in the database',
+                  inputSchema: {
+                    type: 'object',
+                    properties: {
+                      schema: { type: 'string', description: 'Schema name (default: public)' }
+                    },
+                    required: []
+                  }
+                },
+                {
+                  name: 'describe_table',
+                  description: 'Get table structure',
+                  inputSchema: {
+                    type: 'object',
+                    properties: {
+                      table: { type: 'string', description: 'Table name' },
+                      schema: { type: 'string', description: 'Schema name (default: public)' }
+                    },
+                    required: ['table']
+                  }
+                }
+              ]
+            }
+          });
+        } else if (method === 'tools/call') {
           const { name, arguments: args } = params;
           console.log(`[MCP] Tool call: ${name}`);
           
+          let result;
           switch (name) {
             case 'connect_db':
-              return res.json(await this.handleConnectDb(args));
+              result = await this.handleConnectDb(args);
+              break;
             case 'list_tables':
-              return res.json(await this.handleListTables(args));
+              result = await this.handleListTables(args);
+              break;
             case 'list_schemas':
-              return res.json(await this.handleListSchemas());
+              result = await this.handleListSchemas();
+              break;
             case 'describe_table':
-              return res.json(await this.handleDescribeTable(args));
+              result = await this.handleDescribeTable(args);
+              break;
             case 'query':
-              return res.json(await this.handleQuery(args));
+              result = await this.handleQuery(args);
+              break;
             case 'execute':
-              return res.json(await this.handleExecute(args));
+              result = await this.handleExecute(args);
+              break;
             default:
-              return res.status(404).json({ error: `Unknown tool: ${name}` });
+              return res.json({
+                jsonrpc: '2.0',
+                id,
+                error: {
+                  code: -32601,
+                  message: `Unknown tool: ${name}`
+                }
+              });
           }
-        } else if (method === 'tools/list') {
+          
           return res.json({
-            tools: [
-              {
-                name: 'connect_db',
-                description: 'Connect to PostgreSQL database',
-                inputSchema: {
-                  type: 'object',
-                  properties: {
-                    host: { type: 'string', description: 'Database host' },
-                    port: { type: 'number', description: 'Database port (default: 5432)' },
-                    user: { type: 'string', description: 'Database user' },
-                    password: { type: 'string', description: 'Database password' },
-                    database: { type: 'string', description: 'Database name' },
-                    ssl: { type: ['boolean', 'object'], description: 'SSL configuration' }
-                  },
-                  required: ['host', 'user', 'password', 'database']
-                }
-              },
-              {
-                name: 'query',
-                description: 'Execute a SELECT query',
-                inputSchema: {
-                  type: 'object',
-                  properties: {
-                    sql: { type: 'string', description: 'SQL SELECT query' },
-                    params: { type: 'array', description: 'Query parameters' }
-                  },
-                  required: ['sql']
-                }
-              },
-              {
-                name: 'execute',
-                description: 'Execute an INSERT, UPDATE, or DELETE query',
-                inputSchema: {
-                  type: 'object',
-                  properties: {
-                    sql: { type: 'string', description: 'SQL query' },
-                    params: { type: 'array', description: 'Query parameters' }
-                  },
-                  required: ['sql']
-                }
-              },
-              {
-                name: 'list_schemas',
-                description: 'List all schemas in the database',
-                inputSchema: { type: 'object', properties: {}, required: [] }
-              },
-              {
-                name: 'list_tables',
-                description: 'List tables in the database',
-                inputSchema: {
-                  type: 'object',
-                  properties: {
-                    schema: { type: 'string', description: 'Schema name (default: public)' }
-                  },
-                  required: []
-                }
-              },
-              {
-                name: 'describe_table',
-                description: 'Get table structure',
-                inputSchema: {
-                  type: 'object',
-                  properties: {
-                    table: { type: 'string', description: 'Table name' },
-                    schema: { type: 'string', description: 'Schema name (default: public)' }
-                  },
-                  required: ['table']
-                }
-              }
-            ]
+            jsonrpc: '2.0',
+            id,
+            result
           });
         } else {
-          return res.status(400).json({ error: `Unknown method: ${method}` });
+          return res.json({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32601,
+              message: `Unknown method: ${method}`
+            }
+          });
         }
       } catch (err: unknown) {
         console.error(`[MCP] Error handling root POST:`, err);
         const errorMessage = isErrorWithMessage(err) ? err.message : 'Unknown error';
-        res.status(500).json({ error: errorMessage });
+        return res.json({
+          jsonrpc: '2.0',
+          id: req.body.id,
+          error: {
+            code: -32603,
+            message: errorMessage
+          }
+        });
       }
     });
   
