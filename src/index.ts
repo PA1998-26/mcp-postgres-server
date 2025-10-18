@@ -329,28 +329,37 @@ class PostgresServer {
   }
 
   private async handleConnectDb(args: any) {
-    if (!args.host || !args.user || !args.password || !args.database) {
-      throw new McpError(
-        ErrorCode.InvalidParams,
-        'Missing required database configuration parameters'
-      );
-    }
-
     // Close existing connection if any
     if (this.client) {
       await this.client.end();
       this.client = null;
     }
 
-    this.config = {
-      host: args.host,
-      port: args.port || 5432,
-      user: args.user,
-      password: args.password,
-      database: args.database,
-      // Add SSL configuration - default to rejectUnauthorized: false for common SSL issues
-      ssl: args.ssl !== undefined ? args.ssl : { rejectUnauthorized: false }
-    };
+    // If no arguments provided, try to use environment variables
+    if (!args.host || !args.user || !args.password || !args.database) {
+      console.log('[MCP] No connection arguments provided, trying environment variables...');
+      const envConfig = this.getEnvConfig();
+      if (envConfig) {
+        this.config = envConfig;
+        console.log('[MCP] Using environment variables for database connection');
+      } else {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          'Missing required database configuration parameters. Provide connection details or set environment variables (PG_HOST, PG_USER, PG_PASSWORD, PG_DATABASE).'
+        );
+      }
+    } else {
+      // Use provided arguments
+      this.config = {
+        host: args.host,
+        port: args.port || 5432,
+        user: args.user,
+        password: args.password,
+        database: args.database,
+        // Add SSL configuration - default to rejectUnauthorized: false for common SSL issues
+        ssl: args.ssl !== undefined ? args.ssl : { rejectUnauthorized: false }
+      };
+    }
 
     try {
       await this.ensureConnection();
