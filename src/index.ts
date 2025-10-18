@@ -66,6 +66,15 @@ class PostgresServer {
       }
     );
 
+    // Check environment variables on startup
+    console.log('[MCP] Server starting up...');
+    const envConfig = this.getEnvConfig();
+    if (envConfig) {
+      console.log('[MCP] Environment variables loaded successfully on startup');
+    } else {
+      console.log('[MCP] No environment variables found - manual connection required');
+    }
+
     this.setupToolHandlers();
     
     // Error handling
@@ -626,6 +635,12 @@ class PostgresServer {
                 version: '1.0.0'
               }
             }
+          });
+        } else if (method === 'notifications/initialized') {
+          console.log(`[MCP] Client initialized notification received`);
+          return res.json({
+            jsonrpc: '2.0',
+            id: null // notifications don't have IDs
           });
         } else if (method === 'tools/list') {
           console.log(`[MCP] Tools list request`);
