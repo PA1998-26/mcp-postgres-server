@@ -10,6 +10,7 @@
     "build"
   ],
   "scripts": {
+    "start": "node build/index.js",
     "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
     "prepare": "npm run build",
     "watch": "tsc --watch",
