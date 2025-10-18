@@ -10,6 +10,8 @@ import {
 import pg from 'pg';
 const { Client } = pg;
 import { config } from 'dotenv';
+import express from 'express';
+
 
 // Load environment variables
 config();
@@ -510,9 +512,45 @@ class PostgresServer {
   }
 
   async run() {
-    const transport = new StdioServerTransport();
-    await this.server.connect(transport);
-    console.error('PostgreSQL MCP server running on stdio');
+    const app = express();
+    app.use(express.json());
+  
+    const port = process.env.PORT || 3000;
+  
+    app.get('/', (_, res) => {
+      res.send('PostgreSQL MCP server is running.');
+    });
+  
+    // Optional: simple health check
+    app.get('/health', (_, res) => res.json({ status: 'ok' }));
+  
+    // MCP endpoints
+    app.post('/:tool', async (req, res) => {
+      const toolName = req.params.tool;
+      try {
+        switch (toolName) {
+          case 'list_tables':
+            return res.json(await this.handleListTables(req.body));
+          case 'list_schemas':
+            return res.json(await this.handleListSchemas());
+          case 'describe_table':
+            return res.json(await this.handleDescribeTable(req.body));
+          case 'query':
+            return res.json(await this.handleQuery(req.body));
+          case 'execute':
+            return res.json(await this.handleExecute(req.body));
+          default:
+            return res.status(404).json({ error: 'Unknown endpoint' });
+        }
+      } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: err.message });
+      }
+    });
+  
+    app.listen(port, () => {
+      console.log(`🚀 MCP Postgres server listening on port ${port}`);
+    });
   }
 }
 
