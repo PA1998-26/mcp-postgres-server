@@ -539,7 +539,7 @@ class PostgresServer {
     const app = express();
     app.use(express.json());
   
-    const port = process.env.PORT || 3000;
+    const port = parseInt(process.env.PORT || '3000', 10);
   
     app.get('/', (_: unknown, res: any) => {
       res.send('PostgreSQL MCP server is running.');
@@ -551,8 +551,11 @@ class PostgresServer {
     // MCP endpoints
     app.post('/:tool', async (req: any, res: any) => {
       const toolName = req.params.tool;
+      console.log(`[MCP] Received request for tool: ${toolName}`);
       try {
         switch (toolName) {
+          case 'connect_db':
+            return res.json(await this.handleConnectDb(req.body));
           case 'list_tables':
             return res.json(await this.handleListTables(req.body));
           case 'list_schemas':
@@ -564,17 +567,19 @@ class PostgresServer {
           case 'execute':
             return res.json(await this.handleExecute(req.body));
           default:
-            return res.status(404).json({ error: 'Unknown endpoint' });
+            console.log(`[MCP] Unknown tool requested: ${toolName}`);
+            return res.status(404).json({ error: `Unknown endpoint: ${toolName}` });
         }
       } catch (err: unknown) {
-        console.error(err);
+        console.error(`[MCP] Error handling ${toolName}:`, err);
         const errorMessage = isErrorWithMessage(err) ? err.message : 'Unknown error';
         res.status(500).json({ error: errorMessage });
       }
     });
   
-    app.listen(port, () => {
+    app.listen(port, '0.0.0.0', () => {
       console.log(`🚀 MCP Postgres server listening on port ${port}`);
+      console.log(`[MCP] Server bound to 0.0.0.0:${port}`);
     });
   }
   
