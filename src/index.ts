@@ -10,7 +10,6 @@ import {
 import pg from 'pg';
 const { Client } = pg;
 import { config } from 'dotenv';
-import express from 'express';
 
 
 // Load environment variables
@@ -512,20 +511,21 @@ class PostgresServer {
   }
 
   async run() {
+    const express = (await import('express')).default;
     const app = express();
     app.use(express.json());
   
     const port = process.env.PORT || 3000;
   
-    app.get('/', (_, res) => {
+    app.get('/', (_: unknown, res: any) => {
       res.send('PostgreSQL MCP server is running.');
     });
   
-    // Optional: simple health check
-    app.get('/health', (_, res) => res.json({ status: 'ok' }));
+    // Optional health check
+    app.get('/health', (_: unknown, res: any) => res.json({ status: 'ok' }));
   
     // MCP endpoints
-    app.post('/:tool', async (req, res) => {
+    app.post('/:tool', async (req: any, res: any) => {
       const toolName = req.params.tool;
       try {
         switch (toolName) {
@@ -542,9 +542,10 @@ class PostgresServer {
           default:
             return res.status(404).json({ error: 'Unknown endpoint' });
         }
-      } catch (err) {
+      } catch (err: unknown) {
         console.error(err);
-        res.status(500).json({ error: err.message });
+        const errorMessage = isErrorWithMessage(err) ? err.message : 'Unknown error';
+        res.status(500).json({ error: errorMessage });
       }
     });
   
@@ -552,6 +553,7 @@ class PostgresServer {
       console.log(`🚀 MCP Postgres server listening on port ${port}`);
     });
   }
+  
 }
 
 const server = new PostgresServer();
